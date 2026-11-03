@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pagination, usePagination } from "../../components/Pagination";
 import BulkSelectBar, { SelectCheckbox, useBulkSelect } from "../../components/BulkSelectBar";
-import axios from "axios";
+import api from "../../services/api";
 
 import {
   Users,
@@ -39,60 +39,6 @@ import {
   Eye,
 } from "lucide-react";
 
-
-const API_URL = "https://task-management-backend-ph-2.onrender.com/api";
-const TOKEN_KEYS = [
-  "token",
-  "authToken",
-  "accessToken",
-  "jwt",
-  "userToken",
-];
-
-const getAuthToken = () => {
-  for (const key of TOKEN_KEYS) {
-    const token =
-      localStorage.getItem(key) || sessionStorage.getItem(key);
-
-    if (token) {
-      return token.replace(/^"|"$/g, "");
-    }
-  }
-
-  return null;
-};
-
-const api = axios.create({
-  baseURL: "https://task-management-backend-ph-2.onrender.com/api",
-  withCredentials: true,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-api.interceptors.request.use((config) => {
-  const token = getAuthToken();
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      TOKEN_KEYS.forEach((key) => {
-        localStorage.removeItem(key);
-        sessionStorage.removeItem(key);
-      });
-    }
-
-    return Promise.reject(error);
-  }
-);
 
 /* Role names come from the backend (GET /api/permissions/catalog). */
 const ROLE_LABELS = {
