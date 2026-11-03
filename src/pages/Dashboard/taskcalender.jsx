@@ -28,12 +28,14 @@ import {
   FileSpreadsheet,
   RefreshCw,
 } from "lucide-react";
+import { API_URL as API_URL_BASE, getAuthToken } from "../../services/api";
 
 // ============================================================
 // BACKEND CONFIG
 // ============================================================
 
-const API_BASE = (import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com/api").replace(/\/$/, "");
+// Backend URL + token come from the shared services/api.js
+const API_BASE = API_URL_BASE;
 
 // Calendar shows the organization's REAL tasks (same records as the Tasks page)
 const API_URL = `${API_BASE}/tasks`;
@@ -70,35 +72,6 @@ const readError = async (response, fallback) => {
 // ============================================================
 // AUTH — reads the JWT saved by Login.jsx
 // ============================================================
-
-const getAuthToken = () => {
-  const directKeys = ["token", "authToken", "accessToken", "jwt", "auth_token"];
-  for (const key of directKeys) {
-    const value = localStorage.getItem(key) || sessionStorage.getItem(key);
-    if (value) {
-      return value.replace(/^"|"$/g, "");
-    }
-  }
-
-  const objectKeys = ["user", "auth", "currentUser", "userData", "profile"];
-  for (const key of objectKeys) {
-    try {
-      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
-      const obj = JSON.parse(raw || "null");
-      if (obj?.token) return obj.token;
-      if (obj?.accessToken) return obj.accessToken;
-      if (obj?.authToken) return obj.authToken;
-    } catch {
-      /* not JSON, skip */
-    }
-  }
-
-  console.warn(
-    "[TaskCalendar] No auth token found in storage. If requests return 401, " +
-      "check the key Login.jsx uses and add it to getAuthToken()."
-  );
-  return "";
-};
 
 const buildAuthHeaders = (extra = {}) => {
   const token = getAuthToken();
