@@ -6,7 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import axios from "axios";
+import api, { API_URL } from "../../services/api";
 import { getSocket } from "../../services/socket";
 import CsvImportDialog from "../../components/CsvImportDialog";
 import { Pagination, usePagination } from "../../components/Pagination";
@@ -93,9 +93,6 @@ const colors = {
    API SETUP
 ========================================================= */
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com/api";
-
 // Same rules the backend enforces — used only to hide actions the user cannot perform
 const getSessionUser = () => {
   try {
@@ -151,30 +148,6 @@ const downloadAttachment = async (attachment) => {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
-
-const getAuthToken = () =>
-  localStorage.getItem("token") ||
-  localStorage.getItem("authToken") ||
-  localStorage.getItem("accessToken") ||
-  localStorage.getItem("jwt") ||
-  localStorage.getItem("userToken") ||
-  "";
-
-const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const token = getAuthToken();
-
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
 
 /* =========================================================
    RESPONSE HELPERS
