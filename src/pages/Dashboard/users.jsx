@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = "https://task-management-backend-ph-2.onrender.com/api";
 const TOKEN_KEYS = [
   "token",
   "authToken",
@@ -63,7 +63,7 @@ const getAuthToken = () => {
 };
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: "https://task-management-backend-ph-2.onrender.com/api",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",

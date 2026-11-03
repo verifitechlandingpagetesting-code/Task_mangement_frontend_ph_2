@@ -45,7 +45,7 @@ const openCall = (m) => {
 };
 
 /* ===================== API CONFIG ===================== */
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/+$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com/api").replace(/\/+$/, "");
 const API_URL = API_BASE_URL + "/meetings";
 const DEPARTMENTS_URL = API_BASE_URL + "/departments";
 // Everyone in my organization (works for every role, not only admins)

@@ -18,7 +18,7 @@ import SupportTicketThread from "./SupportTicketThread";
 
 
 
-const API_URL = "http://localhost:5000/api/support";
+const API_URL = "https://task-management-backend-ph-2.onrender.com/api/support";
 
 const getToken = () => localStorage.getItem("token");
 

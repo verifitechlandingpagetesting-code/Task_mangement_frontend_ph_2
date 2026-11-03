@@ -40,8 +40,8 @@ import {
   Timer,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api";
-const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || "http://localhost:5000").replace(/\/+$/, "");
+const API_URL = "https://task-management-backend-ph-2.onrender.com/api";
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || "https://task-management-backend-ph-2.onrender.com").replace(/\/+$/, "");
 
 // Chat permissions (enforced by the API as well)
 const chatCan = (action) => {
