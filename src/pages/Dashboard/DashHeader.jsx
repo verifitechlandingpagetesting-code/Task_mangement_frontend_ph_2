@@ -30,7 +30,7 @@ import { recordLogout } from "../../services/activity";
 import { InstallAppButton } from "../../components/AppStatus";
 
 const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:5000"
+  import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com"
 ).replace(/\/+$/, "");
 
 const DashHeader = ({
