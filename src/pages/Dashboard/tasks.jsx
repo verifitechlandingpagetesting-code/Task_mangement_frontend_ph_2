@@ -1,3 +1,4 @@
+
 import React, {
   useEffect,
   useMemo,
@@ -102,23 +103,6 @@ const getSessionUser = () => {
   }
 };
 
-// Read the authentication token used by the shared Axios API client.
-// Keep this in sync with the token key used by the login page.
-const getAuthToken = () => {
-  if (typeof window === "undefined" || !window.localStorage) return "";
-
-  const tokenKeys = ["token", "authToken", "accessToken", "jwt", "userToken"];
-
-  for (const key of tokenKeys) {
-    const value = window.localStorage.getItem(key);
-    if (value && value !== "null" && value !== "undefined") {
-      return value.replace(/^Bearer\s+/i, "").trim();
-    }
-  }
-
-  return "";
-};
-
 const canDo = (user, moduleId, action) =>
   user?.role === "SuperAdmin" ||
   Boolean(user?.permissions?.[moduleId]?.includes(action));
@@ -153,7 +137,7 @@ const fileExtension = (name = "") =>
 // Authenticated download (the files are not public)
 const downloadAttachment = async (attachment) => {
   const response = await api.get(
-    `/api/tasks/attachments/${encodeURIComponent(attachment.filename)}`,
+    `/tasks/attachments/${encodeURIComponent(attachment.filename)}`,
     { responseType: "blob" }
   );
   const url = URL.createObjectURL(response.data);
@@ -528,19 +512,19 @@ const normalizeSubtaskForForm = (s, index) => {
 ========================================================= */
 
 const fetchTasksApi = async () => {
-  const response = await api.get("/api/tasks");
+  const response = await api.get("/tasks");
   return extractTaskList(response);
 };
 
 const createTaskApi = async (payload) => {
-  const response = await api.post("/api/tasks", payload);
+  const response = await api.post("/tasks", payload);
   return extractCreatedTask(response);
 };
 
 // Backend: PATCH /api/tasks/:id (JSON or multipart/form-data)
 const updateTaskApi = async (taskId, payload) => {
   const response = await api.patch(
-    `/api/tasks/${taskId}`,
+    `/tasks/${taskId}`,
     payload
   );
 
@@ -559,7 +543,7 @@ const STATUS_VALUE_OVERRIDE = {
 };
 
 // Backend route: PATCH /api/tasks/:id/status { status }
-const STATUS_ROUTE_OVERRIDE = "/api/tasks/{id}/status";
+const STATUS_ROUTE_OVERRIDE = "/tasks/{id}/status";
 
 const STATUS_VALUE_VARIANTS = (
   canonical,
@@ -623,8 +607,8 @@ const STATUS_ROUTES = (taskId) => {
   }
 
   return [
-    `/api/tasks/${taskId}`,
-    `/api/tasks/${taskId}/status`,
+    `/tasks/${taskId}`,
+    `/tasks/${taskId}/status`,
   ];
 };
 
@@ -835,7 +819,7 @@ const deleteTaskApi = async (
   taskId
 ) => {
   return api.delete(
-    `/api/tasks/${taskId}`
+    `/tasks/${taskId}`
   );
 };
 
@@ -3800,7 +3784,7 @@ const TaskFormModal = ({
     }
     let cancelled = false;
     api
-      .get("/api/tasks/rework-id-preview", { params: { reworkOf: reworkRef.id, userIds: assignedUsers.join(",") } })
+      .get("/tasks/rework-id-preview", { params: { reworkOf: reworkRef.id, userIds: assignedUsers.join(",") } })
       .then((res) => !cancelled && setReworkPreview(res.data?.data?.people || []))
       .catch(() => !cancelled && setReworkPreview([]));
     return () => {
@@ -5503,10 +5487,10 @@ const TasksPage = () => {
           departmentsResponse,
         ] = await Promise.all([
           api.get(
-            "/api/users/assignable"
+            "/users/assignable"
           ),
           api.get(
-            "/api/departments"
+            "/departments"
           ),
         ]);
 
@@ -6065,7 +6049,7 @@ const TasksPage = () => {
     setActionError("");
     setUpdatingTaskIds((prev) => ({ ...prev, [task.id]: true }));
     try {
-      const response = await api.patch(`/api/tasks/${task.id}/status`, {
+      const response = await api.patch(`/tasks/${task.id}/status`, {
         status: decision === "complete" ? "Completed" : "In Progress",
         note,
         ...(decision === "complete" ? { score: givenScore } : {}),
@@ -8242,9 +8226,9 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
         body.append("dueDate", dueDate);
         body.append("assignedTo", assigneeId);
         newFiles.forEach((file) => body.append("attachments", file));
-        await api.post(`/api/tasks/${task.id}/subtasks`, body);
+        await api.post(`/tasks/${task.id}/subtasks`, body);
       } else {
-        await api.post(`/api/tasks/${task.id}/subtasks`, { title: value, assignedTo: assigneeId });
+        await api.post(`/tasks/${task.id}/subtasks`, { title: value, assignedTo: assigneeId });
       }
       setTitle("");
       setDueDate("");
@@ -8267,7 +8251,7 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
     run(`files-${sub._id}`, async () => {
       const body = new FormData();
       files.forEach((file) => body.append("attachments", file));
-      await api.patch(`/api/tasks/${task.id}/subtasks/${sub._id}`, body);
+      await api.patch(`/tasks/${task.id}/subtasks/${sub._id}`, body);
     });
   };
 
@@ -8293,7 +8277,7 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
                   checked={Boolean(sub.completed)}
                   disabled={!canTick || Boolean(busy)}
                   onChange={(e) =>
-                    run(key, () => api.patch(`/api/tasks/${task.id}/subtasks/${sub._id}`, { completed: e.target.checked }))
+                    run(key, () => api.patch(`/tasks/${task.id}/subtasks/${sub._id}`, { completed: e.target.checked }))
                   }
                   aria-label={`Mark "${sub.title}" ${sub.completed ? "not done" : "done"}`}
                   style={{ accentColor: "#0f9b91", marginTop: 2, cursor: canTick ? "pointer" : "default" }}
@@ -8350,7 +8334,7 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
                     value={sub.dueDate || ""}
                     disabled={Boolean(busy)}
                     onChange={(event) =>
-                      run(`deadline-${sub._id}`, () => api.patch(`/api/tasks/${task.id}/subtasks/${sub._id}`, { dueDate: event.target.value }))
+                      run(`deadline-${sub._id}`, () => api.patch(`/tasks/${task.id}/subtasks/${sub._id}`, { dueDate: event.target.value }))
                     }
                     aria-label={`Deadline for ${sub.title}`}
                     title="Subtask deadline"
@@ -8363,7 +8347,7 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
                     disabled={Boolean(busy)}
                     onChange={(e) =>
                       e.target.value &&
-                      run(key, () => api.patch(`/api/tasks/${task.id}/subtasks/${sub._id}`, { moveTo: e.target.value }))
+                      run(key, () => api.patch(`/tasks/${task.id}/subtasks/${sub._id}`, { moveTo: e.target.value }))
                     }
                     style={styles.subtaskMove}
                     aria-label={`Move "${sub.title}" to another person`}
@@ -8381,7 +8365,7 @@ const SubtaskList = ({ task, users = [], others = [], onChanged, startOpen = fal
                     disabled={Boolean(busy)}
                     onClick={() =>
                       window.confirm(`Remove subtask "${sub.title}"?`) &&
-                      run(key, () => api.delete(`/api/tasks/${task.id}/subtasks/${sub._id}`))
+                      run(key, () => api.delete(`/tasks/${task.id}/subtasks/${sub._id}`))
                     }
                     style={styles.subtaskRemove}
                     title="Remove subtask"
