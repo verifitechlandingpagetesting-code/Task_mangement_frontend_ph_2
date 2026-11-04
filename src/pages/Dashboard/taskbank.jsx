@@ -36,12 +36,20 @@ import {
    API CONFIG
    ========================================================= */
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com/api";
+// Set VITE_API_URL in your frontend .env file.
+// It can be either the backend origin (https://your-backend.onrender.com)
+// or the API root (https://your-backend.onrender.com/api).
+const RAW_API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://task-management-backend-ph-2.onrender.com/api";
 
-const API_URL = API_BASE_URL.endsWith("/")
-  ? `${API_BASE_URL}taskbank`
-  : `${API_BASE_URL}/taskbank`;
+const CLEAN_API_BASE_URL = String(RAW_API_BASE_URL).trim().replace(/\\/+$/, "");
+
+const API_BASE_URL = /\\/api$/i.test(CLEAN_API_BASE_URL)
+  ? CLEAN_API_BASE_URL
+  : `${CLEAN_API_BASE_URL}/api`;
+
+const API_URL = `${API_BASE_URL}/taskbank`;
 
 // Files on repository items — same rules as task attachments on the server
 const FILE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "zip"];
@@ -1123,7 +1131,7 @@ const TaskBank = () => {
 
       {showImport && (
         <CsvImportDialog
-          endpoint="/api/taskbank/import"
+          endpoint={`${API_URL}/import`}
           title="Import Task Bank items from CSV"
           help="Columns: Title*, Description*, Category, Department, Type (Template or Idea), Priority (High, Medium, Low), Estimated Time, Tags (separate with ; ). Items whose title already exists are skipped."
           columns={[
