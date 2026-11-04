@@ -43,7 +43,8 @@ const RAW_API_BASE_URL =
   import.meta.env.VITE_API_URL ||
   "https://task-management-backend-ph-2.onrender.com/api";
 
-const CLEAN_API_BASE_URL = String(RAW_API_BASE_URL).trim().replace(/\\/+$/, "");
+// const CLEAN_API_BASE_URL = String(RAW_API_BASE_URL).trim().replace(/\\/+$/, "");
+const CLEAN_API_BASE_URL = String(RAW_API_BASE_URL).trim().replace(/\/+$/, "");
 
 const API_BASE_URL = /\\/api$/i.test(CLEAN_API_BASE_URL)
   ? CLEAN_API_BASE_URL
