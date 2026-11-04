@@ -16,7 +16,7 @@ import {
 const API_URL = (
   import.meta.env.VITE_API_URL ||
   "https://task-management-backend-ph-2.onrender.com/api"
-).replace(/\\/+$/, "");
+).replace(/\/+$/, "");
 
 const getAuthToken = () =>
   localStorage.getItem("token") ||
