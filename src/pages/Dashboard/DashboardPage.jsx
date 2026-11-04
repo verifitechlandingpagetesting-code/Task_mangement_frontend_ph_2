@@ -13,8 +13,10 @@ import {
    API / calculation logic preserved
 ========================================================= */
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "https://task-management-backend-ph-2.onrender.com/api";
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://task-management-backend-ph-2.onrender.com/api"
+).replace(/\\/+$/, "");
 
 const getAuthToken = () =>
   localStorage.getItem("token") ||
@@ -53,6 +55,9 @@ const extractApiData = (response) => {
   if (Array.isArray(body?.users)) return body.users;
   if (Array.isArray(body?.departments)) return body.departments;
   if (Array.isArray(body?.tasks)) return body.tasks;
+  if (Array.isArray(body?.items)) return body.items;
+  if (Array.isArray(body?.result)) return body.result;
+  if (Array.isArray(body?.result?.data)) return body.result.data;
   return [];
 };
 
@@ -234,8 +239,16 @@ const DashboardPage = () => {
   const loadActivity = useCallback(async () => {
     try {
       const res = await api.get("/notifications", { params: { limit: 15 } });
-      setActivity(res.data?.data || []);
-      setActivityUnread(res.data?.unread || 0);
+      const payload = res.data?.data ?? res.data;
+      const notifications = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.notifications)
+          ? payload.notifications
+          : [];
+      setActivity(notifications);
+      setActivityUnread(
+        Number(res.data?.unread ?? payload?.unread ?? 0)
+      );
     } catch {
       /* panel is optional — dashboard still works */
     }
