@@ -63,7 +63,7 @@ const getAuthToken = () => {
 };
 
 const api = axios.create({
-  baseURL: "https://task-management-backend-ph-2.onrender.com/api",
+  baseURL: API_URL,
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
