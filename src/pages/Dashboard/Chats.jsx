@@ -11,7 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API_URL = "https://task-management-backend-ph-2.onrender.com";
+const API_URL = "https://task-management-backend-ph-2.onrender.com/api";
 
 const api = axios.create({
   baseURL: API_URL,
