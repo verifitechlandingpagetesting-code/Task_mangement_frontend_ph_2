@@ -28,21 +28,38 @@ import {
   FileSpreadsheet,
   RefreshCw,
 } from "lucide-react";
-import { API_URL as API_URL_BASE, getAuthToken } from "../../services/api";
-
 // ============================================================
-// BACKEND CONFIG
+// BACKEND API CONFIG
 // ============================================================
 
-// Backend URL + token come from the shared services/api.js
-const API_BASE = API_URL_BASE;
+// Use the same deployed API base URL as the Users page.
+// You can override this in Vercel with VITE_API_URL if required.
+const API_BASE = (
+  import.meta.env?.VITE_API_URL ||
+  "https://task-management-backend-ph-2.onrender.com/api"
+).replace(/\/+$/, "");
 
-// Calendar shows the organization's REAL tasks (same records as the Tasks page)
 const API_URL = `${API_BASE}/tasks`;
-
-// Users this account may assign to (org-scoped by the backend)
 const USERS_API_URLS = [`${API_BASE}/users/assignable`];
 const DEPARTMENTS_API_URL = `${API_BASE}/departments`;
+
+const TOKEN_KEYS = ["token", "authToken", "accessToken", "jwt", "userToken"];
+
+const getAuthToken = () => {
+  for (const key of TOKEN_KEYS) {
+    const token =
+      localStorage.getItem(key) || sessionStorage.getItem(key);
+    if (token) return token.replace(/^"|"$/g, "");
+  }
+
+  // Support projects that store the token inside the session user object.
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    return user?.token || user?.accessToken || user?.jwt || null;
+  } catch {
+    return null;
+  }
+};
 
 // Calendar status ⇄ task status
 const TO_TASK_STATUS = { Pending: "To Do", "In Progress": "In Progress", Completed: "Completed" };
@@ -81,6 +98,14 @@ const buildAuthHeaders = (extra = {}) => {
     ...extra,
   };
 };
+
+// Include cookies as well as the JWT header for backends using cookie sessions.
+const fetchWithAuth = (url, options = {}) =>
+  fetch(url, {
+    credentials: "include",
+    ...options,
+    headers: buildAuthHeaders(options.headers || {}),
+  });
 
 // ------------------------------------------------------------
 // BACKEND FIELD MAPPING
@@ -333,9 +358,7 @@ const TaskCalendar = () => {
     setError("");
 
     try {
-      const response = await fetch(API_URL, {
-        headers: buildAuthHeaders(),
-      });
+      const response = await fetchWithAuth(API_URL);
 
       if (response.status === 401) {
         setError("Session expired or unauthorized (401) — please log in again.");
@@ -364,9 +387,7 @@ const TaskCalendar = () => {
   const fetchUsers = useCallback(async () => {
     for (const url of USERS_API_URLS) {
       try {
-        const response = await fetch(url, {
-          headers: buildAuthHeaders(),
-        });
+        const response = await fetchWithAuth(url);
 
         if (!response.ok) continue;
 
@@ -388,14 +409,17 @@ const TaskCalendar = () => {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const response = await fetch(DEPARTMENTS_API_URL, { headers: buildAuthHeaders() });
+      const response = await fetchWithAuth(DEPARTMENTS_API_URL);
       if (!response.ok) return;
       const data = await response.json();
-      setOrgDepartments(
-        extractTaskList(data)
-          .map((d) => d?.name)
-          .filter(Boolean)
-      );
+      const departmentList = extractTaskList(data)
+        .map((item) =>
+          typeof item === "string"
+            ? item
+            : String(item?.name || item?.departmentName || item?.title || "")
+        )
+        .filter(Boolean);
+      setOrgDepartments(departmentList);
     } catch {
       /* department list is optional */
     }
@@ -731,9 +755,9 @@ const TaskCalendar = () => {
   const sendImport = async (file, preview) => {
     const body = new FormData();
     body.append("file", file);
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${API_URL}/import${preview ? "?preview=true" : ""}`,
-      { method: "POST", headers: buildAuthHeaders(), body }
+      { method: "POST", body }
     );
     let data = {};
     try {
@@ -854,11 +878,11 @@ const TaskCalendar = () => {
     setSaving(true);
 
     try {
-      const response = await fetch(
+      const response = await fetchWithAuth(
         editingTask ? `${API_URL}/${editingTask.id}` : API_URL,
         {
           method: editingTask ? "PATCH" : "POST",
-          headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
       );
@@ -875,9 +899,9 @@ const TaskCalendar = () => {
 
       // Status has its own endpoint (keeps history + completion points)
       if (statusChanged) {
-        const statusResponse = await fetch(`${API_URL}/${editingTask.id}/status`, {
+        const statusResponse = await fetchWithAuth(`${API_URL}/${editingTask.id}/status`, {
           method: "PATCH",
-          headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: TO_TASK_STATUS[form.status] || "To Do" }),
         });
         if (!statusResponse.ok) {
@@ -916,9 +940,8 @@ const TaskCalendar = () => {
     if (!window.confirm(`Delete "${task.title}"? This cannot be undone.`)) return;
 
     try {
-      const response = await fetch(`${API_URL}/${task.id}`, {
+      const response = await fetchWithAuth(`${API_URL}/${task.id}`, {
         method: "DELETE",
-        headers: buildAuthHeaders(),
       });
       if (!response.ok) {
         throw new Error(await readError(response, "Failed to delete the task."));
