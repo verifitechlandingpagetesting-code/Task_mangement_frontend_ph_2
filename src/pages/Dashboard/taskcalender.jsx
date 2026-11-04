@@ -290,12 +290,22 @@ const normalizeTask = (raw) => {
 // Accepts [ ... ], { tasks: [...] }, { data: [...] }, { results: [...] }
 const extractTaskList = (data) => {
   if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.tasks)) return data.tasks;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.users)) return data.users;
-  return [];
+
+  // Support both flat and commonly nested Express/Mongoose response shapes.
+  const candidates = [
+    data?.tasks,
+    data?.users,
+    data?.departments,
+    data?.results,
+    data?.items,
+    data?.data,
+    data?.data?.tasks,
+    data?.data?.users,
+    data?.data?.results,
+    data?.data?.items,
+  ];
+
+  return candidates.find(Array.isArray) || [];
 };
 
 const MONTHS = [
