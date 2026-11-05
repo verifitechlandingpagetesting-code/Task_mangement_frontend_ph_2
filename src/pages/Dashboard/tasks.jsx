@@ -1,4 +1,3 @@
-
 import React, {
   useEffect,
   useMemo,
@@ -20,6 +19,7 @@ import {
   validateMonthlyConfig,
 } from "./MonthlyTaskProgress";
 import {
+  DepartmentMultiSelect,
   EmployeeWorkload,
   ReworkReferencePicker,
   reminderSummary,
@@ -153,26 +153,13 @@ const downloadAttachment = async (attachment) => {
    RESPONSE HELPERS
 ========================================================= */
 
-// Supports the response envelopes commonly returned by the API:
-// [], { data: [] }, { departments: [] }, { data: { departments: [] } },
-// and { success: true, result: { data: [] } }.
 const extractApiData = (response) => {
-  let body = response?.data ?? response;
+  const body = response?.data;
 
-  for (let depth = 0; depth < 5 && body; depth += 1) {
-    if (Array.isArray(body)) return body;
-    if (Array.isArray(body.departments)) return body.departments;
-    if (Array.isArray(body.users)) return body.users;
-    if (Array.isArray(body.items)) return body.items;
-    if (Array.isArray(body.results)) return body.results;
-    if (Array.isArray(body.departmentList)) return body.departmentList;
-    if (Array.isArray(body.records)) return body.records;
-    if (Array.isArray(body.docs)) return body.docs;
-
-    const next = body.data ?? body.result ?? body.payload;
-    if (!next || next === body) break;
-    body = next;
-  }
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(body?.users)) return body.users;
+  if (Array.isArray(body?.departments)) return body.departments;
 
   return [];
 };
@@ -210,21 +197,17 @@ const normalizeDepartment = (item) => {
     };
   }
 
-  const source = item?.department && typeof item.department === "object"
-    ? item.department
-    : item;
-
   return {
-    id: source?._id || source?.id || source?.name || source?.departmentName,
+    id: item?._id || item?.id || item?.name,
     name:
-      source?.name ||
-      source?.departmentName ||
-      source?.title ||
-      (typeof source?.department === "string" ? source.department : "") ||
+      item?.name ||
+      item?.departmentName ||
+      item?.title ||
+      item?.department ||
       "",
-    // Task reference IDs: code + number (FF → FF1, FF2…).
-    refPrefix: source?.refPrefix || source?.code || source?.departmentCode || source?.shortCode || "",
-    nextReferenceId: source?.nextReferenceId || source?.nextReference || source?.nextRefId || "",
+    // task reference IDs: code + number (FF → FF1, FF2…)
+    refPrefix: item?.refPrefix || "",
+    nextReferenceId: item?.nextReferenceId || "",
   };
 };
 
@@ -1059,7 +1042,7 @@ const statusConfig = {
     background: "#EEF5F8",
     soft: "#F5FAFC",
     icon: Circle,
-    progress: 0,
+    progress: 15,
     description: "Ready to start",
   },
 
@@ -3249,99 +3232,6 @@ const styles = {
 /* =========================================================
    USER PICKER — dropdown with search, "Select all" and checkboxes
 ========================================================= */
-const DepartmentMultiSelect = ({ departments = [], selected = [], onChange, inputStyle = {} }) => {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const rootRef = useRef(null);
-  const selectedNames = Array.isArray(selected) ? selected : [];
-  const visible = departments.filter((department) =>
-    department.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
-
-  useEffect(() => {
-    const close = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
-
-  const toggle = (name) => {
-    const next = selectedNames.includes(name)
-      ? selectedNames.filter((item) => item !== name)
-      : [...selectedNames, name];
-    onChange(next);
-  };
-
-  return (
-    <div ref={rootRef} style={{ position: "relative", width: "100%" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        style={{
-          ...inputStyle,
-          width: "100%",
-          minHeight: 40,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          textAlign: "left",
-          cursor: "pointer",
-          background: "#fff",
-          color: selectedNames.length ? colors.text : colors.muted,
-        }}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {selectedNames.length ? selectedNames.join(", ") : "Select departments"}
-        </span>
-        <ChevronDown size={16} />
-      </button>
-      {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
-          zIndex: 10020, background: "#fff", border: `1px solid ${colors.border}`,
-          borderRadius: 10, boxShadow: "0 12px 28px rgba(8,42,69,.16)", overflow: "hidden",
-        }}>
-          <div style={{ padding: 9, borderBottom: `1px solid ${colors.border}` }}>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search departments..."
-              style={{ ...inputStyle, width: "100%", minHeight: 34, boxSizing: "border-box" }}
-            />
-          </div>
-          <div style={{ maxHeight: 210, overflowY: "auto", padding: 6 }}>
-            {visible.length ? visible.map((department) => {
-              const checked = selectedNames.includes(department.name);
-              return (
-                <label key={department.id || department.name} style={{
-                  display: "flex", alignItems: "center", gap: 9, padding: "9px 8px",
-                  borderRadius: 7, cursor: "pointer", color: colors.text,
-                  background: checked ? colors.blueLight : "#fff",
-                }}>
-                  <input type="checkbox" checked={checked} onChange={() => toggle(department.name)} />
-                  <span style={{ flex: 1 }}>{department.name}</span>
-                  {department.refPrefix ? <small style={{ color: colors.muted }}>{department.refPrefix}</small> : null}
-                </label>
-              );
-            }) : (
-              <div style={{ padding: 12, color: colors.muted, fontSize: 12 }}>
-                {departments.length ? "No matching departments." : "No departments returned by the API."}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderTop: `1px solid ${colors.border}` }}>
-            <small style={{ color: colors.muted }}>{selectedNames.length} selected</small>
-            <button type="button" onClick={() => setOpen(false)} style={{ border: 0, borderRadius: 7, padding: "6px 12px", background: colors.blue, color: "#fff", cursor: "pointer" }}>Done</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const UserMultiSelect = ({ users, selected, onChange, selectedDepartments = [] }) => {
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState("");
@@ -4004,8 +3894,7 @@ const TaskFormModal = ({
 
     department,
 
-    // Backward-compatible primary department plus the complete multi-select.
-    departments: [...new Set(selectedDepartments.map((value) => String(value).trim()).filter(Boolean))],
+    departments: selectedDepartments,
 
     ...(reworkRef ? { reworkOf: reworkRef.id } : {}),
 
@@ -5592,91 +5481,99 @@ const TasksPage = () => {
       }
 
       try {
-        // Load departments and assignable users independently. A missing or
-        // forbidden users endpoint must not prevent the Department form from
-        // loading, and vice versa.
-        const fetchDepartments = async () => {
-          // Primary endpoint follows the backend API convention. The fallbacks
-          // support deployments that mounted the same router under a singular
-          // or /all path. Stop on auth/server errors; retry only on 404.
-          const paths = ["/departments", "/department", "/departments/all"];
-          let lastError;
-          for (const path of paths) {
-            try {
-              const result = await api.get(path);
-              const records = extractApiData(result);
-              if (records.length) return result;
-              lastError = new Error(`GET ${path} returned no department records.`);
-            } catch (error) {
-              lastError = error;
-              if (error?.response?.status !== 404) throw error;
-            }
-          }
-          throw lastError || new Error("Department endpoint not found.");
-        };
-
-        const [usersResult, departmentsResult] = await Promise.allSettled([
-          api.get("/users/assignable"),
-          fetchDepartments(),
+        const [
+          usersResponse,
+          departmentsResponse,
+        ] = await Promise.all([
+          api.get(
+            "/users/assignable"
+          ),
+          api.get(
+            "/departments"
+          ),
         ]);
 
-      const errors = [];
-
-      if (usersResult.status === "fulfilled") {
         setUsers(
-          extractApiData(usersResult.value)
+          extractApiData(
+            usersResponse
+          )
             .map(normalizeUser)
-            .filter((user) => user.name)
+            .filter(
+              (u) => u.name
+            )
         );
-      } else {
-        const error = usersResult.reason;
-        console.error("Failed to load assignable users:", error);
-        setUsers([]);
-        if (error?.response?.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          setWorkspaceDataError("Session expired. Redirecting to login...");
-          setTimeout(() => { window.location.href = "/login"; }, 1500);
-          return;
-        }
-        errors.push(
-          error?.response?.data?.message ||
-          (error?.response?.status === 403
-            ? "Permission denied while loading assignable users."
-            : "Unable to load assignable users.")
-        );
-      }
 
-      if (departmentsResult.status === "fulfilled") {
-        const loadedDepartments = extractApiData(departmentsResult.value)
-          .map(normalizeDepartment)
-          .filter((department) => department.name);
-        setDepartments(loadedDepartments);
-        if (!loadedDepartments.length) {
-          errors.push("The departments API returned no departments.");
-        }
-      } else {
-        const error = departmentsResult.reason;
-        console.error("Failed to load departments:", error);
-        setDepartments([]);
-        if (error?.response?.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          setWorkspaceDataError("Session expired. Redirecting to login...");
-          setTimeout(() => { window.location.href = "/login"; }, 1500);
-          return;
-        }
-        errors.push(
-          error?.response?.data?.message ||
-          (error?.response?.status === 403
-            ? "Permission denied while loading departments (403)."
-            : error?.code === "ERR_NETWORK"
-              ? `Cannot reach the server at ${API_URL}.`
-              : "Unable to load departments from GET /departments.")
+        setDepartments(
+          extractApiData(
+            departmentsResponse
+          )
+            .map(
+              normalizeDepartment
+            )
+            .filter(
+              (d) => d.name
+            )
         );
-      }
 
-      setWorkspaceDataError(errors.join(" "));
+        setWorkspaceDataError(
+          ""
+        );
+      } catch (error) {
+        console.error(
+          "Failed to load workspace data:",
+          error
+        );
+
+        const status =
+          error?.response
+            ?.status;
+
+        if (status === 401) {
+          setWorkspaceDataError(
+            "Session expired. Redirecting to login..."
+          );
+
+          localStorage.removeItem(
+            "token"
+          );
+
+          localStorage.removeItem(
+            "user"
+          );
+
+          setTimeout(() => {
+            window.location.href =
+              "/login";
+          }, 1500);
+        } else if (
+          status === 403
+        ) {
+          setWorkspaceDataError(
+            "Permission denied (403): cannot load users/departments."
+          );
+
+          setUsers([]);
+          setDepartments([]);
+        } else if (
+          error?.code ===
+          "ERR_NETWORK"
+        ) {
+          setWorkspaceDataError(
+            `Cannot reach the server at ${API_URL}. Is the backend running?`
+          );
+
+          setUsers([]);
+          setDepartments([]);
+        } else {
+          setWorkspaceDataError(
+            error?.response
+              ?.data?.message ||
+              "Unable to load users and departments."
+          );
+
+          setUsers([]);
+          setDepartments([]);
+        }
       } finally {
         setLoadingWorkspaceData(
           false
