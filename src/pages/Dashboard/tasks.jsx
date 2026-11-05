@@ -154,13 +154,23 @@ const downloadAttachment = async (attachment) => {
    RESPONSE HELPERS
 ========================================================= */
 
+// Supports the response envelopes commonly returned by the API:
+// [], { data: [] }, { departments: [] }, { data: { departments: [] } },
+// and { success: true, result: { data: [] } }.
 const extractApiData = (response) => {
-  const body = response?.data;
+  let body = response?.data ?? response;
 
-  if (Array.isArray(body)) return body;
-  if (Array.isArray(body?.data)) return body.data;
-  if (Array.isArray(body?.users)) return body.users;
-  if (Array.isArray(body?.departments)) return body.departments;
+  for (let depth = 0; depth < 5 && body; depth += 1) {
+    if (Array.isArray(body)) return body;
+    if (Array.isArray(body.departments)) return body.departments;
+    if (Array.isArray(body.users)) return body.users;
+    if (Array.isArray(body.items)) return body.items;
+    if (Array.isArray(body.results)) return body.results;
+
+    const next = body.data ?? body.result ?? body.payload;
+    if (!next || next === body) break;
+    body = next;
+  }
 
   return [];
 };
@@ -198,17 +208,21 @@ const normalizeDepartment = (item) => {
     };
   }
 
+  const source = item?.department && typeof item.department === "object"
+    ? item.department
+    : item;
+
   return {
-    id: item?._id || item?.id || item?.name,
+    id: source?._id || source?.id || source?.name || source?.departmentName,
     name:
-      item?.name ||
-      item?.departmentName ||
-      item?.title ||
-      item?.department ||
+      source?.name ||
+      source?.departmentName ||
+      source?.title ||
+      (typeof source?.department === "string" ? source.department : "") ||
       "",
-    // task reference IDs: code + number (FF → FF1, FF2…)
-    refPrefix: item?.refPrefix || "",
-    nextReferenceId: item?.nextReferenceId || "",
+    // Task reference IDs: code + number (FF → FF1, FF2…).
+    refPrefix: source?.refPrefix || source?.code || source?.departmentCode || "",
+    nextReferenceId: source?.nextReferenceId || source?.nextReference || "",
   };
 };
 
@@ -3895,7 +3909,8 @@ const TaskFormModal = ({
 
     department,
 
-    departments: selectedDepartments,
+    // Backward-compatible primary department plus the complete multi-select.
+    departments: [...new Set(selectedDepartments.map((value) => String(value).trim()).filter(Boolean))],
 
     ...(reworkRef ? { reworkOf: reworkRef.id } : {}),
 
@@ -5482,99 +5497,71 @@ const TasksPage = () => {
       }
 
       try {
-        const [
-          usersResponse,
-          departmentsResponse,
-        ] = await Promise.all([
-          api.get(
-            "/users/assignable"
-          ),
-          api.get(
-            "/departments"
-          ),
-        ]);
+        // Load departments and assignable users independently. A missing or
+        // forbidden users endpoint must not prevent the Department form from
+        // loading, and vice versa.
+        const [usersResult, departmentsResult] = await Promise.allSettled([
+        api.get("/users/assignable"),
+        api.get("/departments"),
+      ]);
 
+      const errors = [];
+
+      if (usersResult.status === "fulfilled") {
         setUsers(
-          extractApiData(
-            usersResponse
-          )
+          extractApiData(usersResult.value)
             .map(normalizeUser)
-            .filter(
-              (u) => u.name
-            )
+            .filter((user) => user.name)
         );
-
-        setDepartments(
-          extractApiData(
-            departmentsResponse
-          )
-            .map(
-              normalizeDepartment
-            )
-            .filter(
-              (d) => d.name
-            )
-        );
-
-        setWorkspaceDataError(
-          ""
-        );
-      } catch (error) {
-        console.error(
-          "Failed to load workspace data:",
-          error
-        );
-
-        const status =
-          error?.response
-            ?.status;
-
-        if (status === 401) {
-          setWorkspaceDataError(
-            "Session expired. Redirecting to login..."
-          );
-
-          localStorage.removeItem(
-            "token"
-          );
-
-          localStorage.removeItem(
-            "user"
-          );
-
-          setTimeout(() => {
-            window.location.href =
-              "/login";
-          }, 1500);
-        } else if (
-          status === 403
-        ) {
-          setWorkspaceDataError(
-            "Permission denied (403): cannot load users/departments."
-          );
-
-          setUsers([]);
-          setDepartments([]);
-        } else if (
-          error?.code ===
-          "ERR_NETWORK"
-        ) {
-          setWorkspaceDataError(
-            `Cannot reach the server at ${API_URL}. Is the backend running?`
-          );
-
-          setUsers([]);
-          setDepartments([]);
-        } else {
-          setWorkspaceDataError(
-            error?.response
-              ?.data?.message ||
-              "Unable to load users and departments."
-          );
-
-          setUsers([]);
-          setDepartments([]);
+      } else {
+        const error = usersResult.reason;
+        console.error("Failed to load assignable users:", error);
+        setUsers([]);
+        if (error?.response?.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setWorkspaceDataError("Session expired. Redirecting to login...");
+          setTimeout(() => { window.location.href = "/login"; }, 1500);
+          return;
         }
+        errors.push(
+          error?.response?.data?.message ||
+          (error?.response?.status === 403
+            ? "Permission denied while loading assignable users."
+            : "Unable to load assignable users.")
+        );
+      }
+
+      if (departmentsResult.status === "fulfilled") {
+        const loadedDepartments = extractApiData(departmentsResult.value)
+          .map(normalizeDepartment)
+          .filter((department) => department.name);
+        setDepartments(loadedDepartments);
+        if (!loadedDepartments.length) {
+          errors.push("The departments API returned no departments.");
+        }
+      } else {
+        const error = departmentsResult.reason;
+        console.error("Failed to load departments:", error);
+        setDepartments([]);
+        if (error?.response?.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setWorkspaceDataError("Session expired. Redirecting to login...");
+          setTimeout(() => { window.location.href = "/login"; }, 1500);
+          return;
+        }
+        errors.push(
+          error?.response?.data?.message ||
+          (error?.response?.status === 403
+            ? "Permission denied while loading departments (403)."
+            : error?.code === "ERR_NETWORK"
+              ? `Cannot reach the server at ${API_URL}.`
+              : "Unable to load departments from GET /departments.")
+        );
+      }
+
+      setWorkspaceDataError(errors.join(" "));
       } finally {
         setLoadingWorkspaceData(
           false
