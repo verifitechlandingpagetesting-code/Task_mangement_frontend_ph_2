@@ -20,7 +20,6 @@ import {
   validateMonthlyConfig,
 } from "./MonthlyTaskProgress";
 import {
-  DepartmentMultiSelect,
   EmployeeWorkload,
   ReworkReferencePicker,
   reminderSummary,
@@ -166,6 +165,9 @@ const extractApiData = (response) => {
     if (Array.isArray(body.users)) return body.users;
     if (Array.isArray(body.items)) return body.items;
     if (Array.isArray(body.results)) return body.results;
+    if (Array.isArray(body.departmentList)) return body.departmentList;
+    if (Array.isArray(body.records)) return body.records;
+    if (Array.isArray(body.docs)) return body.docs;
 
     const next = body.data ?? body.result ?? body.payload;
     if (!next || next === body) break;
@@ -221,8 +223,8 @@ const normalizeDepartment = (item) => {
       (typeof source?.department === "string" ? source.department : "") ||
       "",
     // Task reference IDs: code + number (FF → FF1, FF2…).
-    refPrefix: source?.refPrefix || source?.code || source?.departmentCode || "",
-    nextReferenceId: source?.nextReferenceId || source?.nextReference || "",
+    refPrefix: source?.refPrefix || source?.code || source?.departmentCode || source?.shortCode || "",
+    nextReferenceId: source?.nextReferenceId || source?.nextReference || source?.nextRefId || "",
   };
 };
 
@@ -3247,6 +3249,99 @@ const styles = {
 /* =========================================================
    USER PICKER — dropdown with search, "Select all" and checkboxes
 ========================================================= */
+const DepartmentMultiSelect = ({ departments = [], selected = [], onChange, inputStyle = {} }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const rootRef = useRef(null);
+  const selectedNames = Array.isArray(selected) ? selected : [];
+  const visible = departments.filter((department) =>
+    department.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    const close = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const toggle = (name) => {
+    const next = selectedNames.includes(name)
+      ? selectedNames.filter((item) => item !== name)
+      : [...selectedNames, name];
+    onChange(next);
+  };
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", width: "100%" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        style={{
+          ...inputStyle,
+          width: "100%",
+          minHeight: 40,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          textAlign: "left",
+          cursor: "pointer",
+          background: "#fff",
+          color: selectedNames.length ? colors.text : colors.muted,
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selectedNames.length ? selectedNames.join(", ") : "Select departments"}
+        </span>
+        <ChevronDown size={16} />
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+          zIndex: 10020, background: "#fff", border: `1px solid ${colors.border}`,
+          borderRadius: 10, boxShadow: "0 12px 28px rgba(8,42,69,.16)", overflow: "hidden",
+        }}>
+          <div style={{ padding: 9, borderBottom: `1px solid ${colors.border}` }}>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search departments..."
+              style={{ ...inputStyle, width: "100%", minHeight: 34, boxSizing: "border-box" }}
+            />
+          </div>
+          <div style={{ maxHeight: 210, overflowY: "auto", padding: 6 }}>
+            {visible.length ? visible.map((department) => {
+              const checked = selectedNames.includes(department.name);
+              return (
+                <label key={department.id || department.name} style={{
+                  display: "flex", alignItems: "center", gap: 9, padding: "9px 8px",
+                  borderRadius: 7, cursor: "pointer", color: colors.text,
+                  background: checked ? colors.blueLight : "#fff",
+                }}>
+                  <input type="checkbox" checked={checked} onChange={() => toggle(department.name)} />
+                  <span style={{ flex: 1 }}>{department.name}</span>
+                  {department.refPrefix ? <small style={{ color: colors.muted }}>{department.refPrefix}</small> : null}
+                </label>
+              );
+            }) : (
+              <div style={{ padding: 12, color: colors.muted, fontSize: 12 }}>
+                {departments.length ? "No matching departments." : "No departments returned by the API."}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderTop: `1px solid ${colors.border}` }}>
+            <small style={{ color: colors.muted }}>{selectedNames.length} selected</small>
+            <button type="button" onClick={() => setOpen(false)} style={{ border: 0, borderRadius: 7, padding: "6px 12px", background: colors.blue, color: "#fff", cursor: "pointer" }}>Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const UserMultiSelect = ({ users, selected, onChange, selectedDepartments = [] }) => {
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState("");
@@ -5500,10 +5595,30 @@ const TasksPage = () => {
         // Load departments and assignable users independently. A missing or
         // forbidden users endpoint must not prevent the Department form from
         // loading, and vice versa.
+        const fetchDepartments = async () => {
+          // Primary endpoint follows the backend API convention. The fallbacks
+          // support deployments that mounted the same router under a singular
+          // or /all path. Stop on auth/server errors; retry only on 404.
+          const paths = ["/departments", "/department", "/departments/all"];
+          let lastError;
+          for (const path of paths) {
+            try {
+              const result = await api.get(path);
+              const records = extractApiData(result);
+              if (records.length) return result;
+              lastError = new Error(`GET ${path} returned no department records.`);
+            } catch (error) {
+              lastError = error;
+              if (error?.response?.status !== 404) throw error;
+            }
+          }
+          throw lastError || new Error("Department endpoint not found.");
+        };
+
         const [usersResult, departmentsResult] = await Promise.allSettled([
-        api.get("/users/assignable"),
-        api.get("/departments"),
-      ]);
+          api.get("/users/assignable"),
+          fetchDepartments(),
+        ]);
 
       const errors = [];
 
