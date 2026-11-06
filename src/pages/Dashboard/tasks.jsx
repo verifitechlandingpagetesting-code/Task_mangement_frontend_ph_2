@@ -1,3 +1,4 @@
+
 import React, {
   useEffect,
   useMemo,
@@ -1042,7 +1043,7 @@ const statusConfig = {
     background: "#EEF5F8",
     soft: "#F5FAFC",
     icon: Circle,
-    progress: 15,
+    progress: 0,
     description: "Ready to start",
   },
 
