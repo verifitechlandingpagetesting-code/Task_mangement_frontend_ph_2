@@ -6648,7 +6648,7 @@ const TasksPage = () => {
           <CsvImportDialog
             endpoint="/api/tasks/import"
             title="Import tasks from CSV"
-            help="Columns: Title*, Date* (YYYY-MM-DD), Time (HH:mm), Department, Assignee (name or email), Status, Priority, Description, Reference ID. Rows are checked before anything is saved."
+            help="Columns: Title*, Date* (DD-MM-YYYY, e.g. 01-11-2026), Time (HH:mm), Department, Assignee (name or email), Status, Priority, Description, Reference ID. Rows are checked before anything is saved."
             columns={[
               { key: "title", label: "Title" },
               { key: "date", label: "Date" },
@@ -6659,7 +6659,11 @@ const TasksPage = () => {
             template={{
               filename: "tasks-import-template.csv",
               header: "Title,Date,Time,Department,Assignee,Status,Priority,Description,Reference ID",
-              sample: ["Prepare monthly report,2026-11-05,17:00,Development,john@example.com,Pending,High,Collect KPIs,REF-101"],
+              sample: [
+                "Prepare monthly report,01-11-2026,17:00,Development,john@example.com,Pending,High,Collect KPIs,REF-101",
+                "Review Q3 code quality,07-11-2026,10:30,Development,jane@example.com,To Do,Medium,Audit pull requests from the previous quarter,REF-102",
+                "Design landing page hero,08-11-2026,09:00,Design,alex@example.com,In Progress,Medium,Mock hero section variants,REF-103",
+              ],
             }}
             onClose={() => setShowImport(false)}
             onImported={(result) => {
