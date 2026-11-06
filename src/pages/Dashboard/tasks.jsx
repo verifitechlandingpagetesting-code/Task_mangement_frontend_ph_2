@@ -115,6 +115,28 @@ const canModifyTask = (user, task) => {
 };
 
 /* =========================================================
+   AUTH TOKEN
+   The auth token is stored under the "token" key in localStorage
+   (see the 401 handler below — it clears the same key).
+   `getAuthToken` was used earlier but was never imported/defined
+   in this file, which made `loadWorkspaceData` throw a
+   ReferenceError and silently wipe BOTH users and departments.
+   `getStoredToken` replaces it with a safe, local reader.
+========================================================= */
+const getStoredToken = () => {
+  try {
+    return (
+      localStorage.getItem("token") ||
+      localStorage.getItem("authToken") ||
+      localStorage.getItem("accessToken") ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+};
+
+/* =========================================================
    ATTACHMENT RULES (mirror backend/src/controllers/taskController.js)
 ========================================================= */
 
@@ -162,7 +184,53 @@ const extractApiData = (response) => {
   if (Array.isArray(body?.users)) return body.users;
   if (Array.isArray(body?.departments)) return body.departments;
 
+  // Nested shapes some backends use:
+  //   { success: true, data: { departments: [...] } }
+  //   { result: { data: [...] } }
+  //   { payload: { users: [...] } }
+  if (Array.isArray(body?.data?.departments)) return body.data.departments;
+  if (Array.isArray(body?.data?.users)) return body.data.users;
+  if (Array.isArray(body?.result?.data)) return body.result.data;
+  if (Array.isArray(body?.result?.departments)) return body.result.departments;
+  if (Array.isArray(body?.payload?.departments)) return body.payload.departments;
+  if (Array.isArray(body?.payload?.users)) return body.payload.users;
+
   return [];
+};
+
+// Dedicated department extractor — tries every reasonable shape a
+// /departments endpoint might return, and logs what it actually saw
+// so the bug is easy to spot when departments come back empty.
+const extractDepartments = (response, debugSource = "") => {
+  const body = response?.data;
+
+  const candidates = [
+    body,
+    body?.data,
+    body?.departments,
+    body?.data?.departments,
+    body?.result,
+    body?.result?.data,
+    body?.result?.departments,
+    body?.payload,
+    body?.payload?.departments,
+    body?.items,
+    body?.list,
+  ];
+
+  const found = candidates.find((c) => Array.isArray(c) && c.length >= 0);
+
+  if (!Array.isArray(found)) {
+    console.warn(
+      "[Departments] Could not find a department array in the response" +
+        (debugSource ? ` from ${debugSource}` : "") +
+        ". Response body was:",
+      body
+    );
+    return [];
+  }
+
+  return found;
 };
 
 const extractTaskList = (response) => {
@@ -210,6 +278,75 @@ const normalizeDepartment = (item) => {
     refPrefix: item?.refPrefix || "",
     nextReferenceId: item?.nextReferenceId || "",
   };
+};
+
+/* =========================================================
+   DEPARTMENT FETCH WITH FALLBACK
+   Different backends expose departments under different routes
+   (/departments, /api/departments, /department, /dept, …) and
+   different response shapes. This helper tries each route in
+   order, accepts whichever one returns a non-empty department
+   list, and returns the normalized result.
+========================================================= */
+const DEPARTMENT_ENDPOINTS = [
+  "/departments",
+  "/api/departments",
+  "/department",
+  "/api/department",
+  "/dept",
+  "/api/dept",
+  "/departments/list",
+  "/api/departments/list",
+];
+
+const fetchDepartmentsWithFallback = async () => {
+  let lastError = null;
+
+  for (const endpoint of DEPARTMENT_ENDPOINTS) {
+    try {
+      const response = await api.get(endpoint);
+
+      const raw = extractDepartments(response, endpoint);
+
+      if (!raw.length) {
+        // Endpoint responded but had no departments — keep looking,
+        // but remember this endpoint "worked" so we can fall back to it.
+        continue;
+      }
+
+      const normalized = raw
+        .map(normalizeDepartment)
+        .filter((d) => d.name);
+
+      if (normalized.length) {
+        console.info(
+          `[Departments] Loaded ${normalized.length} department(s) from ${endpoint}.`
+        );
+        return normalized;
+      }
+    } catch (err) {
+      lastError = err;
+      const code = err?.response?.status;
+      // 404 → just try the next endpoint; anything else, keep going too
+      // but remember the most recent real error.
+      if (code && code !== 404) {
+        console.warn(
+          `[Departments] ${endpoint} responded with ${code}.`
+        );
+      }
+    }
+  }
+
+  // If we got here, no endpoint returned departments.
+  if (lastError) {
+    throw lastError;
+  }
+
+  // No errors, but also no departments found anywhere.
+  console.warn(
+    "[Departments] Tried all known endpoints and found no departments."
+  );
+  return [];
 };
 
 const normalizeUser = (item) => ({
@@ -5455,131 +5592,161 @@ const TasksPage = () => {
 
   const loadWorkspaceData =
     useCallback(async () => {
-      setLoadingWorkspaceData(
-        true
-      );
-
+      setLoadingWorkspaceData(true);
       setWorkspaceDataError("");
 
-      const token =
-        getAuthToken();
+      const token = getStoredToken();
 
       if (!token) {
         setWorkspaceDataError(
           "You are not logged in. Please sign in again."
         );
 
-        setLoadingWorkspaceData(
-          false
-        );
+        setLoadingWorkspaceData(false);
 
         setTimeout(() => {
-          window.location.href =
-            "/login";
+          window.location.href = "/login";
         }, 1500);
 
         return;
       }
 
+      // Users and departments are fetched SEPARATELY so a failure in
+      // one does NOT wipe the other. (Previously Promise.all coupled
+      // them — a 404 on /departments also cleared the users list.)
+      let usersError = null;
+      let departmentsError = null;
+      let loadedUsers = [];
+      let loadedDepartments = [];
+
+      // ---------- USERS ----------
       try {
-        const [
-          usersResponse,
-          departmentsResponse,
-        ] = await Promise.all([
-          api.get(
-            "/users/assignable"
-          ),
-          api.get(
-            "/departments"
-          ),
-        ]);
-
-        setUsers(
-          extractApiData(
-            usersResponse
-          )
-            .map(normalizeUser)
-            .filter(
-              (u) => u.name
-            )
-        );
-
-        setDepartments(
-          extractApiData(
-            departmentsResponse
-          )
-            .map(
-              normalizeDepartment
-            )
-            .filter(
-              (d) => d.name
-            )
-        );
-
-        setWorkspaceDataError(
-          ""
-        );
+        const usersResponse = await api.get("/users/assignable");
+        loadedUsers = extractApiData(usersResponse)
+          .map(normalizeUser)
+          .filter((u) => u.name);
+        setUsers(loadedUsers);
       } catch (error) {
-        console.error(
-          "Failed to load workspace data:",
-          error
-        );
+        usersError = error;
+        console.error("Failed to load users:", error);
 
-        const status =
-          error?.response
-            ?.status;
+        const status = error?.response?.status;
 
         if (status === 401) {
           setWorkspaceDataError(
             "Session expired. Redirecting to login..."
           );
 
-          localStorage.removeItem(
-            "token"
-          );
-
-          localStorage.removeItem(
-            "user"
-          );
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
 
           setTimeout(() => {
-            window.location.href =
-              "/login";
+            window.location.href = "/login";
           }, 1500);
-        } else if (
-          status === 403
-        ) {
+          setLoadingWorkspaceData(false);
+          return;
+        }
+
+        if (status === 403) {
+          setUsers([]);
+        } else if (error?.code === "ERR_NETWORK") {
+          setUsers([]);
+        } else {
+          setUsers([]);
+        }
+      }
+
+      // ---------- DEPARTMENTS ----------
+      // Departments are the part that was "not fetching". We try a
+      // list of common endpoints in order, accept whichever returns
+      // a non-empty list, and never let a department failure wipe
+      // the users we already loaded above.
+      try {
+        loadedDepartments = await fetchDepartmentsWithFallback();
+        setDepartments(loadedDepartments);
+      } catch (error) {
+        departmentsError = error;
+        console.error("Failed to load departments:", error);
+
+        const status = error?.response?.status;
+
+        if (status === 401) {
+          // Already handled above for users; just clear departments.
+          setDepartments([]);
+        } else if (status === 403) {
+          setDepartments([]);
+        } else if (error?.code === "ERR_NETWORK") {
+          setDepartments([]);
+        } else {
+          setDepartments([]);
+        }
+      }
+
+      // ---------- COMBINED ERROR MESSAGE ----------
+      // Prefer the most actionable message. If only one failed, tell
+      // the user exactly which one — instead of the old generic
+      // "Unable to load users and departments" which hid the real
+      // problem.
+      if (usersError && departmentsError) {
+        const uStatus = usersError?.response?.status;
+        const dStatus = departmentsError?.response?.status;
+
+        if (uStatus === 403 || dStatus === 403) {
           setWorkspaceDataError(
             "Permission denied (403): cannot load users/departments."
           );
-
-          setUsers([]);
-          setDepartments([]);
         } else if (
-          error?.code ===
-          "ERR_NETWORK"
+          usersError?.code === "ERR_NETWORK" ||
+          departmentsError?.code === "ERR_NETWORK"
         ) {
           setWorkspaceDataError(
             `Cannot reach the server at ${API_URL}. Is the backend running?`
           );
-
-          setUsers([]);
-          setDepartments([]);
         } else {
           setWorkspaceDataError(
-            error?.response
-              ?.data?.message ||
+            usersError?.response?.data?.message ||
+              departmentsError?.response?.data?.message ||
               "Unable to load users and departments."
           );
-
-          setUsers([]);
-          setDepartments([]);
         }
-      } finally {
-        setLoadingWorkspaceData(
-          false
-        );
+      } else if (usersError) {
+        const status = usersError?.response?.status;
+        if (status === 403) {
+          setWorkspaceDataError(
+            "Permission denied (403): cannot load users."
+          );
+        } else if (usersError?.code === "ERR_NETWORK") {
+          setWorkspaceDataError(
+            `Cannot reach the server at ${API_URL}. Is the backend running?`
+          );
+        } else {
+          setWorkspaceDataError(
+            usersError?.response?.data?.message ||
+              "Unable to load users. Departments loaded successfully."
+          );
+        }
+      } else if (departmentsError) {
+        const status = departmentsError?.response?.status;
+        if (status === 403) {
+          setWorkspaceDataError(
+            "Permission denied (403): cannot load departments."
+          );
+        } else if (departmentsError?.code === "ERR_NETWORK") {
+          setWorkspaceDataError(
+            `Cannot reach the server at ${API_URL}. Is the backend running?`
+          );
+        } else {
+          setWorkspaceDataError(
+            departmentsError?.response?.data?.message ||
+              "Unable to load departments. Users loaded successfully."
+          );
+        }
+      } else {
+        // Both succeeded — clear any previous error.
+        setWorkspaceDataError("");
       }
+
+      setLoadingWorkspaceData(false);
     }, []);
 
   /* =====================================================
@@ -6377,7 +6544,7 @@ const TasksPage = () => {
               {workspaceDataError}
             </span>
 
-            {getAuthToken() ? (
+            {getStoredToken() ? (
               <button
                 type="button"
                 onClick={
