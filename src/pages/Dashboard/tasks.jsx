@@ -527,7 +527,15 @@ const normalizeTask = (t) => ({
 
   // Same id on every person's copy of a task assigned to several people
   taskGroupId: t?.taskGroupId || null,
-  assignedByName: t?.assignedByName || "",
+  assignedByName:
+    t?.assignedByName ||
+    (typeof t?.assignedBy === "object"
+      ? t?.assignedBy?.name ||
+        t?.assignedBy?.fullName ||
+        t?.assignedBy?.username ||
+        t?.assignedBy?.email ||
+        ""
+      : ""),
   statusHistory: Array.isArray(t?.statusHistory) ? t.statusHistory : [],
   completedAt: t?.completedAt || null,
   emailViewedAt: t?.emailViewedAt || null,
@@ -5581,6 +5589,7 @@ const TasksPage = () => {
   const visibleFields = {
     department: true,
     assignedUser: true,
+    assignedBy: true,
     dueDate: true,
     priority: true,
     status: true,
@@ -8023,15 +8032,41 @@ const TaskCard = ({
             {visibleFields.assignedUser &&
               task.assignedUser && (
                 <span
-                  style={
-                    styles.taskMetaItem
-                  }
+                  style={{
+                    ...styles.taskMetaItem,
+                    color: colors.oceanDark,
+                    fontWeight: 700,
+                  }}
+                  title="Assigned to"
                 >
                   <UserRound
                     size={12}
                   />
 
-                  {task.assignedUser}
+                  <span>{task.assignedUser}</span>
+                </span>
+              )}
+
+            {visibleFields.assignedBy &&
+              task.assignedByName && (
+                <span
+                  style={{
+                    ...styles.taskMetaItem,
+                    color: colors.muted,
+                  }}
+                  title={`Assigned by ${task.assignedByName}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: 10,
+                      opacity: 0.7,
+                    }}
+                  >
+                    ← by
+                  </span>
+
+                  <span>{task.assignedByName}</span>
                 </span>
               )}
 
@@ -8648,6 +8683,19 @@ const GroupMembersPanel = ({ members, actions = {} }) => (
             <div style={{ minWidth: 0 }}>
               <div style={styles.groupName}>{m.assignedUser || "Unassigned"}</div>
               <div style={styles.groupDetails}>
+                {m.assignedByName && (
+                  <span
+                    style={{
+                      ...styles.taskMetaItem,
+                      color: colors.muted,
+                    }}
+                    title={`Assigned by ${m.assignedByName}`}
+                  >
+                    <UserRound size={11} />
+                    <span style={{ fontSize: 10, opacity: 0.7 }}>by</span>
+                    <span>{m.assignedByName}</span>
+                  </span>
+                )}
                 {m.dueDate && (
                   <span style={styles.taskMetaItem}>
                     <CalendarDays size={11} />
